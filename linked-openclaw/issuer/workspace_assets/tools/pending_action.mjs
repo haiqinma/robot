@@ -130,7 +130,15 @@ function maybeDecorateBody(kind, params) {
     };
   }
 
-  const enriched = enrichIssueBodyWithLatestAttachments(params.body);
+  const followOwner = params.clearFollowOwner === true || params.clearFollowOwner === "true"
+    ? ""
+    : params.followOwner === undefined
+      ? undefined
+      : String(params.followOwner).trim();
+  const enriched = enrichIssueBodyWithLatestAttachments(params.body, {
+    ensureFollowOwner: true,
+    followOwner
+  });
   return {
     params: {
       ...params,
@@ -293,8 +301,16 @@ function main() {
   if (action === "execute") {
     const resolved = resolveSingleEntryOrExit(action, root, scope, requester, repoQuery, draftQuery);
     const command = buildExecCommand(resolved.entry.kind, resolved.entry.params);
+    const childEnv = {
+      ...process.env
+    };
+    if (Array.isArray(resolved.entry.attachments) && resolved.entry.attachments.length > 0) {
+      childEnv.ISSUER_INBOUND_ATTACHMENTS_JSON = JSON.stringify(resolved.entry.attachments);
+    } else {
+      delete childEnv.ISSUER_INBOUND_ATTACHMENTS_JSON;
+    }
     const result = spawnSync(process.execPath, command, {
-      env: process.env,
+      env: childEnv,
       encoding: "utf8"
     });
     const raw = (result.stdout || result.stderr || "").trim();

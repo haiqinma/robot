@@ -42,6 +42,52 @@ function parseCsvUpdate(value, clearFlag) {
   return parseCsv(value);
 }
 
+function parseFollowOwnerUpdate(value, clearFlag) {
+  if (clearFlag === "true") {
+    return "";
+  }
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const normalized = String(value).trim();
+  if (!normalized || ["-", "none", "clear"].includes(normalized.toLowerCase())) {
+    return "";
+  }
+
+  return normalized;
+}
+
+async function fetchIssueBody({ owner, repo, issueNumber, auth }) {
+  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${auth.token}`,
+      "X-GitHub-Api-Version": "2022-11-28"
+    }
+  });
+
+  const raw = await response.text();
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = { raw };
+  }
+
+  if (!response.ok) {
+    const error = new Error(
+      parsed?.message || `Failed to fetch current issue body with status ${response.status}.`
+    );
+    error.status = response.status;
+    error.response = parsed;
+    throw error;
+  }
+
+  return String(parsed?.body || "");
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const execute = args.execute === "true";
@@ -53,16 +99,36 @@ async function main() {
   const owner = args.owner || fromUrl?.owner || process.env.GITHUB_DEFAULT_OWNER || process.env.GITHUB_OWNER;
   const repo = args.repo || fromUrl?.repo || process.env.GITHUB_DEFAULT_REPO || process.env.GITHUB_REPO;
   const issueNumber = parseIssueNumber(args, fromUrl);
+  const followOwner = parseFollowOwnerUpdate(args.followOwner, args.clearFollowOwner);
 
   const payload = {};
   const attachments = [];
+  let auth = null;
 
   if (args.title !== undefined) {
     payload.title = required("title", args.title);
   }
 
-  if (args.body !== undefined) {
-    const enriched = enrichIssueBodyWithLatestAttachments(args.body);
+  if (args.body !== undefined || followOwner !== undefined) {
+    let sourceBody = args.body;
+    if (sourceBody === undefined) {
+      if (!owner || !repo) {
+        printJson({
+          ok: false,
+          mode: execute ? "execute" : "preview",
+          error: "Missing GitHub repository. Provide --owner/--repo, --issueUrl, or set GITHUB_DEFAULT_OWNER/GITHUB_DEFAULT_REPO.",
+          issueNumber,
+          payload
+        });
+        process.exit(execute ? 2 : 0);
+      }
+      auth = await resolveGitHubToken({ owner, repo });
+      sourceBody = await fetchIssueBody({ owner, repo, issueNumber, auth });
+    }
+    const enriched = enrichIssueBodyWithLatestAttachments(sourceBody, {
+      ensureFollowOwner: true,
+      followOwner
+    });
     payload.body = enriched.body;
     attachments.push(...enriched.attachments);
   }
@@ -99,13 +165,16 @@ async function main() {
       owner,
       repo,
       issueNumber,
+      ...(followOwner !== undefined ? { followOwner } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
       payload
     });
     return;
   }
 
-  const auth = await resolveGitHubToken({ owner, repo });
+  if (!auth) {
+    auth = await resolveGitHubToken({ owner, repo });
+  }
   let finalPayload = payload;
   if (payload.body !== undefined) {
     const uploadResult = await enrichTextWithUploadedAttachments({

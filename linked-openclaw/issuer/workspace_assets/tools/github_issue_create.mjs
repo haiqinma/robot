@@ -13,9 +13,13 @@ async function main() {
   const repo = args.repo || process.env.GITHUB_DEFAULT_REPO || process.env.GITHUB_REPO;
   const title = required("title", args.title);
   const draftBody = required("body", args.body);
+  const followOwner = args.followOwner === undefined ? "" : String(args.followOwner).trim();
   const labels = parseCsv(args.labels);
   const assignees = parseCsv(args.assignees);
-  const { body, attachments } = enrichIssueBodyWithLatestAttachments(draftBody);
+  const { body, attachments } = enrichIssueBodyWithLatestAttachments(draftBody, {
+    ensureFollowOwner: true,
+    followOwner
+  });
 
   const payload = {
     title,

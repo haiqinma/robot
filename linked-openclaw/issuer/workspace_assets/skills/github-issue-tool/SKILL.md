@@ -27,8 +27,19 @@ Activate this skill when the user wants to:
 
 1. Resolve `owner/repo` from `repoAliases` when possible.
 2. Draft title, body, labels, and assignees.
+   - Always include a `跟进人：` line in the issue body.
+   - If the user already指定了谁来跟进，直接写成 `跟进人：姓名`；否则先留空。
 3. Preview with `node tools/github_issue_create.mjs ...`.
-4. Save a pending action with `--kind github_issue_create`.
+4. Save a pending action with:
+
+```bash
+node tools/pending_action.mjs \
+  --action create \
+  --kind github_issue_create \
+  --headline "创建 issue: 标题" \
+  --paramsJson '{"owner":"yeying-community","repo":"robot","title":"标题","body":"正文"}'
+```
+
 5. Reply with repo, title, labels, body, `/confirm`, `/cancel`.
 6. If the same requester already has multiple pending drafts in the current group, tell them to confirm with `/confirm <repo>`.
 
@@ -36,8 +47,10 @@ Activate this skill when the user wants to:
 
 1. Resolve `owner/repo` and `issueNumber`.
 2. Only modify the fields the user clearly asked for: `title`, `body`, `labels`, `assignees`.
+   - If the user is only specifying who来处理这个 issue, update the `跟进人：` line in the body.
+   - Prefer passing `--followOwner 姓名`. If the user明确要清空跟进人，use `--clearFollowOwner true`.
 3. Preview with `node tools/github_issue_update.mjs ...`.
-4. Save a pending action with `--kind github_issue_update`.
+4. Save a pending action with `node tools/pending_action.mjs --action create ...`.
 5. Reply with repo, issue number, changed fields, `/confirm`, `/cancel`.
 6. If the same requester already has multiple pending drafts in the current group, tell them to confirm with `/confirm <repo>`.
 
@@ -46,18 +59,21 @@ Activate this skill when the user wants to:
 1. Resolve `owner/repo` and `issueNumber`.
 2. Default close reason to `completed` unless `not_planned` is clearly intended.
 3. Preview with `node tools/github_issue_close.mjs ...`.
-4. Save a pending action with `--kind github_issue_close`.
+4. Save a pending action with `node tools/pending_action.mjs --action create ...`.
 5. Reply with repo, issue number, close reason, `/confirm`, `/cancel`.
 
 ## Rules
 
+- If the inbound message is `/confirm`, `/submit`, `/cancel`, or `/help` with or without a repo / `draft:<id>` argument, stop here and return `NO_REPLY`.
+- Those command turns are owned by `hooks/confirmation-bridge`; do not run preview, do not save pending data again, and do not call any `--execute` mutation tool from the assistant path.
+- Never use `tools/pending_action.mjs save ...` or positional `tools/pending_action.mjs create ...`; always pass `--action create`.
 - Only preview in the normal assistant path.
 - Do not call `--execute` directly before explicit confirmation.
 - Pending isolation is `same Feishu conversation + same requester + same repository`.
 - New preview should replace the old pending draft only when those three dimensions are the same.
 - Same requester may keep multiple pending drafts in one group if the repositories differ.
 - If the requester has multiple repo drafts, require `/confirm <repo>` or `/cancel <repo>`.
-- Stage-one attachment behavior: if the user message includes Feishu attachments, keep them as attachment notes in the issue draft/body; do not claim they were uploaded to GitHub.
+- Attachment behavior: if the user message includes Feishu attachments, preview should keep them as attachment notes in the draft/body. After execute or `/confirm`, they should only be described as uploaded if the tool path truly uploaded them and returned usable links.
 
 
 ## Explicit comment flow

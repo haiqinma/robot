@@ -18,8 +18,20 @@ Use this skill when the task involves:
 ## Tool
 
 ```bash
-node tools/pending_action.mjs --action ...
+node tools/pending_action.mjs --action create|get|clear|execute ...
 ```
+
+Create/save example:
+
+```bash
+node tools/pending_action.mjs \
+  --action create \
+  --kind github_issue_create \
+  --headline "创建 issue: title" \
+  --paramsJson '{"owner":"yeying-community","repo":"robot","title":"title","body":"body"}'
+```
+
+Do not use legacy `save` or positional `create`; always use `--action create`.
 
 ## Rules
 

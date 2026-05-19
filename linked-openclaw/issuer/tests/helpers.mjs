@@ -74,6 +74,10 @@ for (let index = 2; index < process.argv.length; index += 1) {
 const owner = args.owner || "yeying-community";
 const repo = args.repo || "robot";
 const title = args.title || "stub issue";
+let attachments = [];
+try {
+  attachments = JSON.parse(process.env.ISSUER_INBOUND_ATTACHMENTS_JSON || "[]");
+} catch {}
 
 if (args.execute !== "true") {
   console.log(JSON.stringify({
@@ -94,6 +98,7 @@ console.log(JSON.stringify({
   mode: "execute",
   owner,
   repo,
+  ...(attachments.length > 0 ? { attachments } : {}),
   result: {
     number: 321,
     title,
@@ -122,4 +127,3 @@ export function withEnv(tempEnv) {
     }
   };
 }
-

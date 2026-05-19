@@ -330,11 +330,53 @@ export function extractInboundAttachmentsFromText(value) {
   return attachments;
 }
 
+function parseInboundAttachmentsOverride(value) {
+  if (!value) {
+    return [];
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(String(value));
+  } catch {
+    return [];
+  }
+
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  return parsed
+    .map((item) => {
+      const displayPath = String(item?.displayPath || "").trim();
+      const localPath = String(item?.localPath || displayPath || "").trim();
+      const mimeType = String(item?.mimeType || "").trim();
+      const filename = String(item?.filename || path.basename(localPath || displayPath) || "").trim();
+
+      if (!localPath && !displayPath) {
+        return null;
+      }
+
+      return {
+        displayPath,
+        localPath: localPath || displayPath,
+        mimeType,
+        filename
+      };
+    })
+    .filter(Boolean);
+}
+
 export function inferInboundAttachmentsFromLatestSession() {
+  const overridden = parseInboundAttachmentsOverride(process.env.ISSUER_INBOUND_ATTACHMENTS_JSON);
+  if (overridden.length > 0) {
+    return overridden;
+  }
   return extractInboundAttachmentsFromText(latestUserMessageTextFromLatestSession());
 }
 
-const ISSUE_ATTACHMENT_MARKER = "<!-- issuer-attachments -->";
+export const ISSUE_ATTACHMENT_MARKER = "<!-- issuer-attachments -->";
+export const ISSUE_FOLLOW_OWNER_LABEL = "跟进人：";
 
 export function appendAttachmentSummaryToIssueBody(body, attachments) {
   const originalBody = String(body || "");
@@ -352,11 +394,47 @@ export function appendAttachmentSummaryToIssueBody(body, attachments) {
   return `${originalBody.trimEnd()}\n\n${section}\n`;
 }
 
-export function enrichIssueBodyWithLatestAttachments(body) {
+export function stripAttachmentSummaryFromIssueBody(body) {
+  const originalBody = String(body || "");
+  const markerIndex = originalBody.indexOf(ISSUE_ATTACHMENT_MARKER);
+  if (markerIndex < 0) {
+    return originalBody;
+  }
+  return originalBody.slice(0, markerIndex).trimEnd();
+}
+
+export function ensureIssueFollowOwnerField(body, followOwner = "") {
+  const normalizedBody = stripAttachmentSummaryFromIssueBody(body);
+  const desiredLine = `${ISSUE_FOLLOW_OWNER_LABEL}${String(followOwner ?? "").trim()}`;
+  const lines = String(normalizedBody || "").split(/\r?\n/);
+  let replaced = false;
+
+  const updatedLines = lines.map((line) => {
+    if (!replaced && /^\s*跟进人\s*[：:]\s*.*$/u.test(line)) {
+      replaced = true;
+      return desiredLine;
+    }
+    return line;
+  });
+
+  const mergedBody = updatedLines.join("\n").trimEnd();
+  if (replaced) {
+    return mergedBody;
+  }
+  if (!mergedBody) {
+    return desiredLine;
+  }
+  return `${mergedBody}\n\n${desiredLine}`;
+}
+
+export function enrichIssueBodyWithLatestAttachments(body, options = {}) {
+  const decoratedBody = options.ensureFollowOwner
+    ? ensureIssueFollowOwnerField(body, options.followOwner)
+    : String(body || "");
   const attachments = inferInboundAttachmentsFromLatestSession();
   return {
     attachments,
-    body: appendAttachmentSummaryToIssueBody(body, attachments)
+    body: appendAttachmentSummaryToIssueBody(decoratedBody, attachments)
   };
 }
 

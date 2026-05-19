@@ -15,9 +15,17 @@ When a Feishu user asks to create, update, close, or comment on a GitHub issue:
 1. Normalize the repository.
 2. Load `skills/github-issue-tool/SKILL.md`.
 3. For create / update / close, preview first with the local tool.
-4. Save the pending action with `tools/pending_action.mjs`.
+4. Save the pending action with `tools/pending_action.mjs --action create --kind ... --headline ... --paramsJson ...`.
+Do not use legacy `save` or positional `create`.
 5. Reply with a clear draft and explicit `/confirm` / `/cancel` guidance.
 6. Let the confirmation hook perform the real mutation.
+
+If the inbound message itself is `/help`, `/confirm`, `/submit`, or `/cancel`:
+
+- Do not run any GitHub mutation tool.
+- Do not recreate or execute a draft from the assistant path.
+- Those command turns belong to the confirmation hook only.
+- If the hook already handled the command, reply with `NO_REPLY`.
 
 For explicit issue comment requests, use `tools/github_issue_comment.mjs --execute` directly.
 

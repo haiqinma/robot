@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-import { appRoot, makeTempDir, readJsonLines, runNodeJson, writeJson } from "./helpers.mjs";
+import { appRoot, installFakeCreateTool, makeTempDir, readJsonLines, runNodeJson, writeJson } from "./helpers.mjs";
 
 const pendingActionPath = path.join(appRoot, "workspace_assets", "tools", "pending_action.mjs");
 
@@ -56,6 +56,7 @@ test("pending_action keeps repo-scoped drafts isolated in sqlite", () => {
   });
   assert.equal(first.result.status, 0);
   assert.equal(first.json.ok, true);
+  assert.match(first.json.pending.params.body, /跟进人：\s*$/);
 
   const second = createDraft(env, {
     conversationId: "chat-a",
@@ -216,4 +217,73 @@ test("pending_action migrates legacy json drafts into sqlite once", () => {
     .filter((name) => name.startsWith("legacy-pending-actions.legacy-imported-"));
   assert.equal(archives.length, 1);
   assert.equal(fs.readdirSync(legacyDir).length, 0);
+});
+
+test("pending_action execute keeps preview-time attachments across confirm execution", () => {
+  const root = makeTempDir("issuer-pending-execute-");
+  fs.mkdirSync(path.join(root, "tools"), { recursive: true });
+  installFakeCreateTool(path.join(root, "tools", "github_issue_create.mjs"));
+
+  const attachment = {
+    displayPath: "/tmp/image.jpg",
+    localPath: "/tmp/image.jpg",
+    mimeType: "image/jpeg",
+    filename: "image.jpg"
+  };
+  const createEnv = {
+    ...testEnv(root),
+    ISSUER_WORKSPACE_ROOT: root,
+    ISSUER_INBOUND_ATTACHMENTS_JSON: JSON.stringify([attachment])
+  };
+
+  const created = createDraft(createEnv, {
+    conversationId: "chat-exec",
+    requesterId: "user-a",
+    requesterLabel: "UserA",
+    headline: "robot attachment draft",
+    params: {
+      owner: "yeying-community",
+      repo: "robot",
+      title: "T-attachment",
+      body: "B-attachment"
+    }
+  });
+  assert.equal(created.result.status, 0);
+  assert.equal(created.json.pending.attachments.length, 1);
+
+  const executeEnv = {
+    ...testEnv(root),
+    ISSUER_WORKSPACE_ROOT: root
+  };
+  const executed = runNodeJson(
+    pendingActionPath,
+    ["--action", "execute", "--conversationId", "chat-exec", "--requesterId", "user-a", "--repoQuery", "robot"],
+    { env: executeEnv }
+  );
+  assert.equal(executed.result.status, 0);
+  assert.equal(executed.json.ok, true);
+  assert.equal(executed.json.executed.attachments.length, 1);
+  assert.equal(executed.json.executed.attachments[0].filename, "image.jpg");
+});
+
+test("pending_action create writes explicit follow owner into issue body", () => {
+  const root = makeTempDir("issuer-pending-follow-owner-");
+  const env = testEnv(root);
+
+  const created = createDraft(env, {
+    conversationId: "chat-follow-owner",
+    requesterId: "user-a",
+    requesterLabel: "UserA",
+    headline: "robot follow owner draft",
+    params: {
+      owner: "yeying-community",
+      repo: "robot",
+      title: "T-follow-owner",
+      body: "B-follow-owner",
+      followOwner: "张三"
+    }
+  });
+
+  assert.equal(created.result.status, 0);
+  assert.match(created.json.pending.params.body, /跟进人：张三/);
 });

@@ -46,6 +46,34 @@ sudo systemctl status --no-pager issuer-openclaw-gateway
 - [部署手册](docs/部署手册.md)
 - [使用手册](docs/使用手册.md)
 
+## 附件上传
+
+附件在执行 `github_issue_create.mjs`、`github_issue_update.mjs`、`github_issue_comment.mjs` 时会自动从最新飞书会话中识别，并上传到外部附件存储。
+
+附件默认上传到 WebDAV。在 `config/github-app.config.env` 中至少配置：
+
+```bash
+WEBDAV_BASE_URL=https://webdav.your-domain.example/dav/personal/issue-pictures
+WEBDAV_USERNAME=your-key-id
+WEBDAV_PASSWORD=your-key-secret
+WEBDAV_PUBLIC_SHARE_API_URL=https://webdav.your-domain.example/api/v1/public/share/create
+WEBDAV_PUBLIC_SHARE_BEARER_TOKEN=your-bearer-token
+```
+
+如果你的服务方使用 `Key ID / Key Secret` 命名，也可以改用：
+
+```bash
+WEBDAV_KEY_ID=your-key-id
+WEBDAV_KEY_SECRET=your-key-secret
+```
+
+上传成功后：
+
+- 会先调用公开分享接口生成外链
+- 图片会在 GitHub Issue/Comment 中以内联 Markdown 形式展示
+- 非图片文件会显示为“查看文件”链接
+- 远端目录按 `issuer-attachments/YYYY/MM/DD/<timestamp>-<random>-filename` 自动分层
+
 ## 排障查看
 
 你直接这样用就行。

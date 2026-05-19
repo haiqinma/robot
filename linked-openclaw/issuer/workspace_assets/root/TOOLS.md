@@ -24,10 +24,11 @@ Read `config/policy.json` first.
 ### Important operational rules
 
 - If a user already provided the repo in the message, do not waste turns checking local git remotes.
-- For create / update draft flows, save pending state through `tools/pending_action.mjs`.
+- For create / update draft flows, save pending state through `tools/pending_action.mjs --action create --kind ... --headline ... --paramsJson ...`.
+- Do not use `tools/pending_action.mjs save ...` or positional `tools/pending_action.mjs create ...`.
 - Pending isolation is by `conversation + requester + repo`.
 - If a user has multiple pending drafts in one group, tell them to use `/confirm <repo>` or `/cancel <repo>`.
-- Feishu attachments are recorded as attachment notes in issue draft/body for stage one; they are not auto-uploaded to GitHub binary storage.
+- Feishu attachments are first recorded as attachment notes in preview. On execute or `/confirm`, they should be uploaded to the configured external attachment storage and then rendered back into the GitHub issue/comment body.
 
 ### Important comment rule
 
