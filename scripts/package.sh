@@ -9,6 +9,7 @@ auto_build="${AUTO_BUILD:-true}"
 tag_arg="${1:-}"
 source_dir=""
 worktree_dir=""
+cargo_home_dir=""
 
 binary_rel="rust/control-plane/target/release/bot-hub-control-plane"
 web_rel="rust/control-plane/web"
@@ -60,15 +61,8 @@ fetch_remote_refs() {
 }
 
 ensure_cargo() {
-  if command -v cargo >/dev/null 2>&1; then
-    return 0
-  fi
-  if [[ -f "$HOME/.cargo/env" ]]; then
-    # shellcheck disable=SC1090
-    source "$HOME/.cargo/env"
-  fi
   if ! command -v cargo >/dev/null 2>&1; then
-    echo "Missing cargo in PATH. Install Rust toolchain first." >&2
+    echo "Missing cargo in PATH. Stop packaging and install Rust toolchain first." >&2
     exit 1
   fi
 }
@@ -80,14 +74,28 @@ prepare_source_dir() {
   source_dir="$worktree_dir"
 }
 
+prepare_isolated_cargo_home() {
+  cargo_home_dir="$(mktemp -d "${TMPDIR:-/tmp}/${project_name}-cargo-home.XXXXXX")"
+  mkdir -p "$cargo_home_dir"
+  cat >"$cargo_home_dir/config.toml" <<'EOF'
+[source.crates-io]
+registry = "sparse+https://index.crates.io/"
+EOF
+}
+
 build_artifacts() {
   if [[ "$auto_build" != "true" ]]; then
     return 0
   fi
 
   ensure_cargo
+  prepare_isolated_cargo_home
   echo "Building Rust control-plane binary (release)..."
-  (cd "$source_dir/rust/control-plane" && cargo build --release)
+  (
+    export CARGO_HOME="$cargo_home_dir"
+    cd "$source_dir/rust/control-plane"
+    cargo build --locked --release
+  )
 }
 
 verify_artifacts() {
@@ -115,6 +123,9 @@ verify_artifacts() {
 }
 
 cleanup() {
+  if [[ -n "$cargo_home_dir" && -d "$cargo_home_dir" ]]; then
+    rm -rf "$cargo_home_dir"
+  fi
   if [[ -n "$worktree_dir" && -d "$worktree_dir" ]]; then
     git -C "$root_dir" worktree remove --force "$worktree_dir" >/dev/null 2>&1 || rm -rf "$worktree_dir"
   fi
